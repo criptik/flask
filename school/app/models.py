@@ -6,14 +6,19 @@ from app import login
 from hashlib import md5
 import sys
 
-# for the many-to-many student-class relationship
-studentclassinfo = db.Table('studentclassinfo',
-                            db.Column('student_id', db.Integer, db.ForeignKey('student.id')),
-                            db.Column('class_id', db.Integer, db.ForeignKey('schoolclass.id')),
-                            db.Column('class_grade', db.Integer),
-                            db.PrimaryKeyConstraint('student_id', 'class_id') )
+# one student can point to many studentclassinfo records
+class StudentClassInfo(db.Model):
+    __table_name__ = 'studentclassinfo'
+    __table_args__ = (
+        db.PrimaryKeyConstraint('student_id', 'class_id'),
+    )
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'))
+    class_id = db.Column(db.Integer, db.ForeignKey('schoolclass.id'))
+    class_grade = db.Column(db.Integer)
 
-
+    def __repr__(self):
+        return '<cid=%d, sid=%d, gr=%s>' % (self.class_id, self.student_id, self.class_grade)
+    
 class Person(db.Model):
     __abstract__ = True
     id = db.Column(db.Integer, primary_key=True)
@@ -29,15 +34,14 @@ class Person(db.Model):
 class Teacher(Person):
     __tablename__ = 'teacher'
     payGrade = db.Column(db.Integer)
-    schoolclasses = db.relationship('Schoolclass', backref='classteacher', lazy='dynamic')
-    # schoolclasses = db.relationship('Schoolclass', back_populates='classteacher', lazy='dynamic')
+    classesTaught = db.relationship('Schoolclass', backref='classteacher', lazy='dynamic')
 
     def infoStr(self):
         return '%s, payGrade=%s' % (super().infoStr(), self.payGrade)
 
     # get all classes that this teacher teaches
     def getClasses(self):
-        return self.schoolclasses.all()
+        return self.classesTaught.all()
 
     # get all students who take a class from this teacher
     def getStudents(self):
@@ -48,55 +52,55 @@ class Teacher(Person):
                 for s in c.students:
                     studs.add(s)
             return studs
-        elif False:
-            # try to use SQL join and filter by test against myclassids
-            myclassids = []
-            for c in self.getClasses():
-                myclassids.append(c.id)
-            # print('myclassids:', myclassids)
-            q = (Student.query.join(studentclassinfo, (studentclassinfo.c.student_id == Student.id))
-                 .filter(studentclassinfo.c.class_id.in_(myclassids))
-                 .order_by(Student.name))
-            # print('SQL is', q)
-            return q.all()
         else:
             # try without any data structures that are outside the db
-            q = (Student.query.join(studentclassinfo, (studentclassinfo.c.student_id == Student.id))
-                 .join(Schoolclass, (Schoolclass.id == studentclassinfo.c.class_id))
+            q = (Student.query.join(StudentClassInfo, (StudentClassInfo.student_id == Student.id))
+                 .join(Schoolclass, (Schoolclass.id == StudentClassInfo.class_id))
                  .filter(Schoolclass.teacher_id == self.id)
                  .order_by(Student.name))
             # print('SQL is ', q)
             return q.all()
 
-    # def recordClassGrade(self, clazz, stud, classGrade):
-    #     # get record from studentclassinfo table
-    #     info = studentclassinfo.query().filter(studentclassinfo.c.class_id == clazz.id,
-    #                                            studentclassinfo.c.student_id == stud.id).all()
-    #     print('before classGrade:', info.__dict__)
-    #     if info == []:
-    #         print('Error no such class-student combination registered')
-    #         return
+    def recordClassGrade(self, clazz, stud, classGrade):
+        # get record from studentclassinfo table
+        debug = False
+        if debug:
+            print('recordClassGrade ', self, clazz, stud, classGrade)
+        infoArray = StudentClassInfo.query.filter(StudentClassInfo.class_id == clazz.id,
+                                                  StudentClassInfo.student_id == stud.id).all()
+        if len(infoArray) == 0:
+            print('Error no such class-student combination registered')
+            return
 
-    #     info.class_grade = classGrade
-    #     print('afterbefore classGrade:', info.__dict__)
+        info = infoArray[0]
+        if debug:
+            print('before classGrade:', info.__dict__, ' and info.student=', info.student)
+        info.class_grade = classGrade
+        if debug:
+            print('after classGrade:', info.__dict__, ' and info.student=', info.student)
         
         
 class Student(Person):
     __tablename__ = 'student'
     grade = db.Column(db.Integer)
-    studclasses = db.relationship(
-        'Schoolclass', secondary=studentclassinfo,
-        backref = 'students',
-        lazy='dynamic')
+    studClassInfos = db.relationship('StudentClassInfo', backref = 'student',  lazy='dynamic')
 
     def infoStr(self):
         return '%s, grade=%s' % (super().infoStr(), self.grade)
 
+    def getClasses(self):
+        return self.studClassInfos.all()
+    
+    def addSchoolClassInfo(self, clazz):
+        info = StudentClassInfo(class_id = clazz.id, class_grade = None)
+        self.studClassInfos.append(info)
+        db.session.add(info)
+        db.session.commit()
 
 # a Schoolclass has one teacher and many students.
 # a teacher can have many Schoolclasses and so can a student
 # so Teacher to SchoolClass is one-to-many
-# but Student to SchoolClass is many-to-many
+# but a SchoolClassInfo record (includes grade_mark) only has one student
 
 class Schoolclass(db.Model):
     __tablename__ = 'schoolclass'
@@ -111,9 +115,24 @@ class Schoolclass(db.Model):
     def get_teacher_id(self):
         return self.teacher_id
 
-    def student_ids(self):
+    # get all students in this class
+    def getStudents(self):
+        result = (Student.query
+                  .join(StudentClassInfo)  #, (StudentClassInfo.class_id == self.id))
+                  .filter(StudentClassInfo.class_id == self.id)
+                  .order_by(Student.name)
+                  .all())
+        if False:
+            print()
+            print('my class id is ', self.id)
+            print('all students = ', Student.query.all())
+            print('all infos = ', StudentClassInfo.query.all())
+            print('all join-filter = ', result)
+        return result
+            
+    def getStudentIds(self):
         ids = []
-        for s in self.students:
+        for s in self.getStudents():
             ids.append(s.id)
         return ids
         

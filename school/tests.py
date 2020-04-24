@@ -68,7 +68,7 @@ class StudentTeacherModelCase(unittest.TestCase):
 
     def showClassStuds(self, n, c):
         print('Class c%d, (%s) students are: ' % (n, c), end='')
-        for s in c.students:
+        for s in c.getStudents():
             print(s.name, end=' ')
         print()
         
@@ -83,7 +83,7 @@ class StudentTeacherModelCase(unittest.TestCase):
         db.session.add_all(teachers)
         db.session.commit()
 
-        numStuds = 25
+        numStuds = 5
         studs = []
         for n in range(numStuds):
             sname = 's%d' % (n)
@@ -109,29 +109,29 @@ class StudentTeacherModelCase(unittest.TestCase):
         # print(teachers[0].getStudents())
         
         # t[0] before append
-        self.assertEqual(teachers[0].schoolclasses.all(), [classes[0], classes[2]])
+        self.assertEqual(teachers[0].getClasses(), [classes[0], classes[2]])
         self.assertEqual(classes[4].classteacher, None)
         # do append
-        teachers[0].schoolclasses.append(classes[-1])
+        teachers[0].classesTaught.append(classes[-1])
         db.session.commit()
         # test after append
-        self.assertEqual(teachers[0].schoolclasses.all(), [classes[0], classes[2], classes[4]])
+        self.assertEqual(teachers[0].getClasses(), [classes[0], classes[2], classes[4]])
         self.assertEqual(classes[4].classteacher, teachers[0])
 
         self.assertEqual(Schoolclass.query.all(), classes)
         # check teacher[1] classes
-        self.assertEqual(teachers[1].schoolclasses.all(), [classes[1], classes[3]])
+        self.assertEqual(teachers[1].getClasses(), [classes[1], classes[3]])
 
         # assign students to classes
         n = 0
         for s in studs:
             if n >= numStuds-2:
                 continue
-            s.studclasses.append(classes[n % (numClasses-1)])
+            s.addSchoolClassInfo(classes[n % (numClasses-1)])
             print('s%d in c%d' % (n, n  % (numClasses-1)))
             if n == 1:
-                s.studclasses.append(classes[2])
-                s.studclasses.append(classes[3])
+                s.addSchoolClassInfo(classes[2])
+                s.addSchoolClassInfo(classes[3])
                 print('s1 in c2, c3')
             n = n + 1
         db.session.commit()
@@ -140,7 +140,7 @@ class StudentTeacherModelCase(unittest.TestCase):
         self.showClassStuds(1, classes[1])
         
         # appending s0 to c1
-        classes[1].students.append(studs[0])
+        studs[0].addSchoolClassInfo(classes[1])
         db.session.commit()
         print()
         print('After Append -----------------')
@@ -159,16 +159,20 @@ class StudentTeacherModelCase(unittest.TestCase):
 
         n = 0
         for s in studs:
-            print('Student %s: classes are %s' % (s.name, s.studclasses.all()))
+            print('Student %s: classes are %s' % (s.name, s.getClasses()))
             n = n + 1
 
-        if False:
-            # record a grade
-            # get first class and first student in that class
-            clazz = teachers[0].getClasses()[0]
-            stud = clazz.students[0]
-            teachers[0].recordClassGrade(clazz, stud, 98)
-            db.session.commit()
+        # record a grade
+        # get first class and first student in that class
+        for n in range(numTeachers):
+            print('t%d:' % (n), end=' ')
+            print(teachers[n].getClasses())
+            
+        clazz = teachers[1].getClasses()[0]
+        print('clazz.getStudents for %s is %s' % (clazz, clazz.getStudents()))
+        stud = clazz.getStudents()[1]
+        teachers[0].recordClassGrade(clazz, stud, 98)
+        db.session.commit()
         
 if __name__ == '__main__':
     unittest.main(verbosity=2)
