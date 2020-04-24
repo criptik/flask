@@ -72,8 +72,11 @@ class StudentTeacherModelCase(unittest.TestCase):
             print(s.name, end=' ')
         print()
         
-    
+
     def test_schoolclass(self):
+        Debug = False
+        
+        # create teachers
         numTeachers = 4
         teachers = []
         for n in range(numTeachers):
@@ -83,6 +86,7 @@ class StudentTeacherModelCase(unittest.TestCase):
         db.session.add_all(teachers)
         db.session.commit()
 
+        # create students
         numStuds = 5
         studs = []
         for n in range(numStuds):
@@ -92,6 +96,7 @@ class StudentTeacherModelCase(unittest.TestCase):
         db.session.add_all(studs)
         db.session.commit()
 
+        # create classes and assign to teachers
         numClasses = 5
         classes = []
         subjects = ['Algebra', 'Geometry', 'Trig', 'Calculus']
@@ -127,52 +132,86 @@ class StudentTeacherModelCase(unittest.TestCase):
         for s in studs:
             if n >= numStuds-2:
                 continue
-            s.addSchoolClassInfo(classes[n % (numClasses-1)])
-            print('s%d in c%d' % (n, n  % (numClasses-1)))
+            s.registerForClass(classes[n % (numClasses-1)])
+            if Debug:
+                print('s%d in c%d' % (n, n  % (numClasses-1)))
             if n == 1:
-                s.addSchoolClassInfo(classes[2])
-                s.addSchoolClassInfo(classes[3])
-                print('s1 in c2, c3')
+                s.registerForClass(classes[2])
+                s.registerForClass(classes[3])
+                if Debug:
+                    print('s1 in c2, c3')
             n = n + 1
         db.session.commit()
 
-        print('Before append, ', end='')
-        self.showClassStuds(1, classes[1])
+        if Debug:
+            print('Before append, ')
+            self.showClassStuds(1, classes[1])
+        self.assertEqual(classes[1].getStudents(), [studs[1]])
         
         # appending s0 to c1
-        studs[0].addSchoolClassInfo(classes[1])
+        studs[0].registerForClass(classes[1])
         db.session.commit()
-        print()
-        print('After Append -----------------')
-        n = 0
-        for c in classes:
-            self.showClassStuds(n, classes[n])
-            n = n + 1
-
-        print('+++')
-
-        for t in teachers:
-            print('Student List for %s:' % (t.name), end=' ')
-            for s in t.getStudents():
-                print(s.name, end=' ')
+        # test after append
+        if Debug:
             print()
+            print('After Append -----------------')
+            n = 0
+            for c in classes:
+                self.showClassStuds(n, classes[n])
+                n = n + 1
+            print('+++')
+        self.assertEqual(classes[1].getStudents(), studs[0:2])
 
-        n = 0
-        for s in studs:
-            print('Student %s: classes are %s' % (s.name, s.getClasses()))
-            n = n + 1
 
+        if Debug:
+            for t in teachers:
+                print('Student List for %s:' % (t.name), end=' ')
+                for s in t.getStudents():
+                    print(s.name, end=' ')
+                print()
+        self.assertEqual(teachers[0].getStudents(), studs[0:3])
+        self.assertEqual(teachers[1].getStudents(), studs[0:2])
+        self.assertEqual(teachers[2].getStudents(), [])
+        self.assertEqual(teachers[3].getStudents(), [])
+        
+
+        if True:
+            n = 0
+            for s in studs:
+                print('Student %s: classes are %s' % (s.name, s.getClasses()))
+                n = n + 1
+            for n in range(numClasses):
+                print('%d: %s' % (n, classes[n]))
+        
+        self.assertEqual(studs[0].getClasses(), [classes[0], classes[1]])
+        self.assertEqual(studs[1].getClasses(), [classes[1], classes[2], classes[3]])
+        self.assertEqual(studs[2].getClasses(), [classes[2]])
+        self.assertEqual(studs[3].getClasses(), [])
+        self.assertEqual(studs[4].getClasses(), [])
+
+            
         # record a grade
-        # get first class and first student in that class
-        for n in range(numTeachers):
-            print('t%d:' % (n), end=' ')
-            print(teachers[n].getClasses())
+        # get a class from t1 and a student in that class
+        if Debug:
+            for n in range(numTeachers):
+                print('t%d:' % (n), end=' ')
+                print(teachers[n].getClasses())
             
         clazz = teachers[1].getClasses()[0]
-        print('clazz.getStudents for %s is %s' % (clazz, clazz.getStudents()))
-        stud = clazz.getStudents()[1]
-        teachers[0].recordClassGrade(clazz, stud, 98)
+        if Debug:
+            print('clazz.getStudents for %s is %s' % (clazz, clazz.getStudents()))
+        gradedStudent = clazz.getStudents()[1]
+        teachers[0].recordClassGrade(clazz, gradedStudent, 98)
         db.session.commit()
-        
+
+        for s in studs:
+            for c in s.getClasses():
+                if Debug:
+                    print('stud %s, class %s, grade %s' % (s, c, s.getClassGrade(c)))
+                if c.id == clazz.id and s.id == gradedStudent.id:
+                    self.assertEqual(s.getClassGrade(c), 98)
+                else:
+                    self.assertEqual(s.getClassGrade(c), None)
+                
 if __name__ == '__main__':
     unittest.main(verbosity=2)

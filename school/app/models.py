@@ -74,10 +74,10 @@ class Teacher(Person):
 
         info = infoArray[0]
         if debug:
-            print('before classGrade:', info.__dict__, ' and info.student=', info.student)
+            print('before classGrade:', info)
         info.class_grade = classGrade
         if debug:
-            print('after classGrade:', info.__dict__, ' and info.student=', info.student)
+            print('after classGrade:', info)
         
         
 class Student(Person):
@@ -89,14 +89,34 @@ class Student(Person):
         return '%s, grade=%s' % (super().infoStr(), self.grade)
 
     def getClasses(self):
-        return self.studClassInfos.all()
-    
-    def addSchoolClassInfo(self, clazz):
+        if False:
+            # non join version
+            classes = []
+            for info in self.studClassInfos.all():
+                classes.append(Schoolclass.query.get(info.class_id))
+            return classes
+        else:
+            # joiny version
+            result = (Schoolclass.query
+                      .join(StudentClassInfo)  
+                      .filter(StudentClassInfo.student_id == self.id)
+                      .order_by(Schoolclass.id)
+                      .all())
+            return result
+            
+    def registerForClass(self, clazz):
         info = StudentClassInfo(class_id = clazz.id, class_grade = None)
         self.studClassInfos.append(info)
         db.session.add(info)
         db.session.commit()
 
+    def getClassGrade(self, clazz):
+        for info in self.studClassInfos.all():
+            if info.class_id == clazz.id:
+                return info.class_grade
+        return None
+    
+        
 # a Schoolclass has one teacher and many students.
 # a teacher can have many Schoolclasses and so can a student
 # so Teacher to SchoolClass is one-to-many
